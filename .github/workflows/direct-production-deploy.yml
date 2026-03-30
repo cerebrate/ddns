@@ -181,19 +181,19 @@ jobs:
       - name: Smoke test IPv4 endpoint (production)
         shell: pwsh
         run: |
-          ./.github/scripts/smoke-test.ps1 \
-            -FunctionUrl "${{ secrets.PROD_IPV4_FUNCTION_URL }}" \
-            -Zone "${{ vars.SMOKE_ZONE }}" \
-            -Name "${{ vars.SMOKE_IPV4_RECORD }}" \
+          ./.github/scripts/smoke-test.ps1 `
+            -FunctionUrl "${{ secrets.PROD_IPV4_FUNCTION_URL }}" `
+            -Zone "${{ vars.SMOKE_ZONE }}" `
+            -Name "${{ vars.SMOKE_IPV4_RECORD }}" `
             -ReqIp "${{ vars.SMOKE_IPV4_ADDRESS }}"
 
       - name: Smoke test IPv6 endpoint (production)
         shell: pwsh
         run: |
-          ./.github/scripts/smoke-test.ps1 \
-            -FunctionUrl "${{ secrets.PROD_IPV6_FUNCTION_URL }}" \
-            -Zone "${{ vars.SMOKE_ZONE }}" \
-            -Name "${{ vars.SMOKE_IPV6_RECORD }}" \
+          ./.github/scripts/smoke-test.ps1 `
+            -FunctionUrl "${{ secrets.PROD_IPV6_FUNCTION_URL }}" `
+            -Zone "${{ vars.SMOKE_ZONE }}" `
+            -Name "${{ vars.SMOKE_IPV6_RECORD }}" `
             -ReqIp "${{ vars.SMOKE_IPV6_ADDRESS }}"
 
   backoff_on_smoke_failure:
@@ -202,6 +202,7 @@ jobs:
       - deploy_to_production
       - smoke_test_production
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Azure login (OIDC)
