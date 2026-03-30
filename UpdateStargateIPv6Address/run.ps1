@@ -87,40 +87,47 @@ else {
     else {
         # Lookup current record and then decide between update, no-op, or create.
         $currentRecord = $null
+        $lookupFailed = $false
 
         try {
-            $currentRecord = Get-AzDnsRecordSet -Name $name -RecordType AAAA -ZoneName $zone -ResourceGroupName $resourceGroupName
+            $currentRecord = Get-AzDnsRecordSet -Name $name -RecordType AAAA -ZoneName $zone -ResourceGroupName $resourceGroupName -ErrorAction Stop
         }
         catch {
             Write-Host "Caught an exception:" -ForegroundColor Red
             Write-Host "Exception Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
             Write-Host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
+            $lookupFailed = $true
+            $status = [HttpStatusCode]::InternalServerError
+            $body = "DNS lookup failed. No changes were applied."
+            Write-Host $body
         }
 
-        if ($currentRecord) {
-            Write-Host "There is a current AAAA record for $name in zone $zone"
+        if (-not $lookupFailed) {
+            if ($currentRecord) {
+                Write-Host "There is a current AAAA record for $name in zone $zone"
 
-            $currentIp = $currentRecord.Records.Ipv6Address
-            if ($currentIp -ne $reqIP) {
-                Write-Host "IP Address $reqIP passed - updating DNS record accordingly"
-                $currentRecord.Records[0].Ipv6Address = $reqIP
-                Set-AzDnsRecordSet -RecordSet $currentRecord
-                $body = "Updated DNS record with requested IP $reqIP"
-                $status = [HttpStatusCode]::OK
-                Write-Host $body
+                $currentIp = $currentRecord.Records.Ipv6Address
+                if ($currentIp -ne $reqIP) {
+                    Write-Host "IP Address $reqIP passed - updating DNS record accordingly"
+                    $currentRecord.Records[0].Ipv6Address = $reqIP
+                    Set-AzDnsRecordSet -RecordSet $currentRecord
+                    $body = "Updated DNS record with requested IP $reqIP"
+                    $status = [HttpStatusCode]::OK
+                    Write-Host $body
+                }
+                else {
+                    $body = "Requested IP and current DNS record match - no changes needed"
+                    $status = [HttpStatusCode]::OK
+                    Write-Host $body
+                }
             }
             else {
-                $body = "Requested IP and current DNS record match - no changes needed"
+                Write-Host "No current AAAA record for $name in zone $zone, adding now."
+                New-AzDnsRecordSet -Name $name -RecordType AAAA -ZoneName $zone -ResourceGroupName $resourceGroupName -Ttl $ttl -DnsRecords (New-AzDnsRecordConfig -Ipv6Address $reqIP)
                 $status = [HttpStatusCode]::OK
+                $body = "DNS Record created with requested IP $reqIP"
                 Write-Host $body
             }
-        }
-        else {
-            Write-Host "No current AAAA record for $name in zone $zone, adding now."
-            New-AzDnsRecordSet -Name $name -RecordType AAAA -ZoneName $zone -ResourceGroupName $resourceGroupName -Ttl $ttl -DnsRecords (New-AzDnsRecordConfig -Ipv6Address $reqIP)
-            $status = [HttpStatusCode]::OK
-            $body = "DNS Record created with requested IP $reqIP"
-            Write-Host $body
         }
     }
 }

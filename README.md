@@ -133,3 +133,32 @@ To avoid confusion under current constraints, the slot-based progressive deploym
 
 - [archive/workflows/progressive-deploy.yml](archive/workflows/progressive-deploy.yml)
 - [archive/docs/progressive-deployment.md](archive/docs/progressive-deployment.md)
+
+## Automated tests (Pester)
+
+This repository includes a baseline Pester suite under [tests](tests):
+
+- [tests/DdnsFunctions.Tests.ps1](tests/DdnsFunctions.Tests.ps1)
+- [tests/TestHelpers.ps1](tests/TestHelpers.ps1)
+
+Current coverage focuses on handler contract behavior for both IPv4 and IPv6 functions:
+
+1. Missing required input returns HTTP 400.
+2. Query/body fallback (including reqIP body fallback) and trim behavior.
+3. IP family validation (IPv4 only for A, IPv6 only for AAAA).
+4. Update path when current record differs.
+5. Create path when no record exists.
+6. Default `DDNS_RESOURCE_GROUP` and `DDNS_TTL` behavior when app settings are absent.
+7. Valid app-setting override behavior for resource group and TTL.
+8. Invalid `DDNS_TTL` fallback to the default value.
+
+Run locally:
+
+```powershell
+Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+$pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+Import-Module $pesterModule -Force
+Invoke-Pester -Path ./tests
+```
+
+The direct production workflow also runs this suite before packaging and deployment.
