@@ -6,6 +6,36 @@ param($Request, $TriggerMetadata)
 # Write to the Azure Functions log stream.
 Write-Host "UpdateStargateIPv4Address function processed a request."
 
+$defaultResourceGroupName = "Standard"
+$resourceGroupName = $env:DDNS_RESOURCE_GROUP
+
+if ($null -ne $resourceGroupName) {
+    $resourceGroupName = $resourceGroupName.ToString().Trim()
+}
+
+if (-not $resourceGroupName) {
+    $resourceGroupName = $defaultResourceGroupName
+}
+
+$defaultTtl = 3600
+$ttl = $defaultTtl
+$ttlSetting = $env:DDNS_TTL
+
+if ($null -ne $ttlSetting) {
+    $ttlSetting = $ttlSetting.ToString().Trim()
+}
+
+if ($ttlSetting) {
+    $parsedTtl = 0
+    $isValidTtl = [int]::TryParse($ttlSetting, [ref]$parsedTtl) -and ($parsedTtl -gt 0)
+
+    if ($isValidTtl) {
+        $ttl = $parsedTtl
+    } else {
+        Write-Host "Invalid DDNS_TTL app setting '$ttlSetting' - using default TTL $defaultTtl"
+    }
+}
+
 # Interact with query parameters or the body of the request.
 $name = $Request.Query.Name
 $zone = $Request.Query.Zone
@@ -46,7 +76,7 @@ If ($name -and $zone -and $reqIP) {
         Write-Host $body
     } else {
         #Check if name passed is already in DNS zone that was passed
-        Try {$CurrentRec=Get-AzDnsRecordSet -Name $name -RecordType A -ZoneName $zone -ResourceGroupName Standard}
+        Try {$CurrentRec=Get-AzDnsRecordSet -Name $name -RecordType A -ZoneName $zone -ResourceGroupName $resourceGroupName}
         Catch { write-host "Caught an exception:" -ForegroundColor Red
                 write-host "Exception Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
                 write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red }
@@ -70,7 +100,7 @@ If ($name -and $zone -and $reqIP) {
                     }
                 } else {
                     Write-Host "No current A record for $name in zone $zone, adding now."
-                    New-AzDnsRecordSet -Name $name -RecordType A -ZoneName $zone -ResourceGroupName Standard -Ttl 3600 -DnsRecords (New-AzDnsRecordConfig -Ipv4Address $reqIP)
+                    New-AzDnsRecordSet -Name $name -RecordType A -ZoneName $zone -ResourceGroupName $resourceGroupName -Ttl $ttl -DnsRecords (New-AzDnsRecordConfig -Ipv4Address $reqIP)
                     $status = [HttpStatusCode]::OK
                     $body = "DNS Record created with requested IP $reqIP"
                     Write-Host $body
