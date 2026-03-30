@@ -19,6 +19,22 @@ if (-not $zone) {
     $zone = $Request.Body.Zone
 }
 
+if (-not $reqIP) {
+    $reqIP = $Request.Body.reqIP
+}
+
+if ($null -ne $name) {
+    $name = $name.ToString().Trim()
+}
+
+if ($null -ne $zone) {
+    $zone = $zone.ToString().Trim()
+}
+
+if ($null -ne $reqIP) {
+    $reqIP = $reqIP.ToString().Trim()
+}
+
 If ($name -and $zone -and $reqIP) {
     [System.Net.IPAddress]$parsedReqIP = $null
     $isParsableIP = [System.Net.IPAddress]::TryParse($reqIP, [ref]$parsedReqIP)
