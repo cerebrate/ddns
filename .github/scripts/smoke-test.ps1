@@ -25,10 +25,19 @@ try {
 }
 catch {
     $statusCode = $null
+    $responseBody = $null
 
     try {
         if ($null -ne $_.Exception.Response) {
             $statusCode = [int]$_.Exception.Response.StatusCode
+
+            if ($null -ne $_.Exception.Response.Content) {
+                $responseBody = [string]$_.Exception.Response.Content
+            }
+            elseif ($null -ne $_.Exception.Response.GetResponseStream()) {
+                $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+                $responseBody = $reader.ReadToEnd()
+            }
         }
     }
     catch {
@@ -37,6 +46,23 @@ catch {
 
     if ($statusCode -eq 401) {
         throw "Smoke test received HTTP 401 Unauthorized. The function URL secret likely has a missing or invalid function key (code=...). Refresh PROD_IPV4_FUNCTION_URL / PROD_IPV6_FUNCTION_URL from Azure Portal > Functions > Get function URL."
+    }
+
+    if ($statusCode -eq 500) {
+        if ($responseBody) {
+            $compactBody = ($responseBody -replace "\s+", " ").Trim()
+            if ($compactBody.Length -gt 500) {
+                $compactBody = $compactBody.Substring(0, 500) + '...'
+            }
+
+            throw "Smoke test received HTTP 500 Internal Server Error. Response body: $compactBody"
+        }
+
+        throw "Smoke test received HTTP 500 Internal Server Error with no response body."
+    }
+
+    if ($statusCode) {
+        throw "Smoke test request failed with HTTP $statusCode. $($_.Exception.Message)"
     }
 
     throw "Smoke test request failed. $($_.Exception.Message)"

@@ -125,6 +125,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Re-enable both update functions before deploy
+        shell: bash
+        run: |
+          az functionapp config appsettings set \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --settings \
+              AzureWebJobs.UpdateStargateIPv4Address.Disabled=false \
+              AzureWebJobs.UpdateStargateIPv6Address.Disabled=false
+
       - name: Deploy package to production (with retry)
         shell: bash
         run: |
