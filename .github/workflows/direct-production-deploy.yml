@@ -42,17 +42,17 @@ jobs:
             }
           }
 
-    #   - name: Install Pester
-    #     shell: pwsh
-    #     run: |
-    #       Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
 
-    #   - name: Run Pester tests
-    #     shell: pwsh
-    #     run: |
-    #       $pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
-    #       Import-Module $pesterModule -Force
-    #       Invoke-Pester -Path ./tests
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          $pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+          Import-Module $pesterModule -Force
+          Invoke-Pester -Path ./tests
 
       - name: Create deployment metadata
         shell: bash

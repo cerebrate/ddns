@@ -7,4 +7,11 @@
 # * A Function App starts up after being de-allocated due to inactivity
 #
 
-Connect-AzAccount -Identity
+try {
+    Connect-AzAccount -Identity -ErrorAction Stop
+    Write-Host "Azure account connected via managed identity."
+}
+catch {
+    Write-Error "Failed to connect to Azure with managed identity: $($_.Exception.Message)"
+    throw
+}
