@@ -16,11 +16,7 @@ if (-not $name) {
 }
 
 if (-not $zone) {
-    $name = $Request.Body.Zone
-}
-
-if (-not $name) {
-    $name = $Request.Body.Name
+    $zone = $Request.Body.Zone
 }
 
 If ($name -and $zone -and $reqIP) {
