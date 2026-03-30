@@ -164,18 +164,21 @@ Current coverage focuses on handler contract behavior for both IPv4 and IPv6 fun
 1. Missing required input returns HTTP 400.
 2. Query/body fallback (including reqIP body fallback) and trim behavior.
 3. IP family validation (IPv4 only for A, IPv6 only for AAAA).
-4. Update path when current record differs.
-5. Create path when no record exists.
-6. Default `DDNS_RESOURCE_GROUP` and `DDNS_TTL` behavior when app settings are absent.
-7. Valid app-setting override behavior for resource group and TTL.
-8. Invalid `DDNS_TTL` fallback to the default value.
+4. Zone allowlist enforcement returns HTTP 403 before any DNS call.
+5. Record name allowlist enforcement returns HTTP 403 before any DNS call.
+6. Zone and record name in allowlist — request proceeds.
+7. Update path when current record differs.
+8. No-op path when requested IP matches existing record (returns 200, no write).
+9. Create path when no record exists.
+10. DNS lookup failure returns HTTP 500 and does not fall through to create.
+11. Default `DDNS_RESOURCE_GROUP` and `DDNS_TTL` behavior when app settings are absent.
+12. Valid app-setting override behavior for resource group and TTL.
+13. Invalid `DDNS_TTL` fallback to the default value.
 
 Run locally:
 
 ```powershell
 Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
-$pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
-Import-Module $pesterModule -Force
 Invoke-Pester -Path ./tests
 ```
 
