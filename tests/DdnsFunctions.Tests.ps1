@@ -195,6 +195,23 @@ foreach ($case in $cases) {
             $global:NewCalled | Should Be $false
         }
 
+        It 'returns 200 and does not update when requested IP matches existing record' {
+            Set-TestAzMocks -LookupMode existing -CurrentIp $case.ValidIp -IpKind $case.IpKind
+
+            $request = New-TestRequest -Query @{
+                Name = 'router'
+                Zone = 'example.com'
+                reqIP = $case.ValidIp
+            } -Body @{}
+
+            $response = Invoke-FunctionScript -ScriptPath $caseScriptPath -Request $request
+
+            $response.StatusCode | Should Be ([System.Net.HttpStatusCode]::OK)
+            $response.Body | Should Be 'Requested IP and current DNS record match - no changes needed'
+            $global:SetCalled | Should Be $false
+            $global:NewCalled | Should Be $false
+        }
+
         It 'creates record when lookup returns no record' {
             Set-TestAzMocks -LookupMode missing -IpKind $case.IpKind
 

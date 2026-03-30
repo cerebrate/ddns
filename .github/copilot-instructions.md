@@ -33,16 +33,17 @@ Function contract for both endpoints:
 ## Conventions
 Follow these project-specific conventions:
 - Preserve function authLevel as function unless explicitly requested otherwise.
-- Keep resource and DNS behavior explicit. ResourceGroupName and TTL are currently hardcoded in scripts.
+- ResourceGroupName comes from DDNS_RESOURCE_GROUP app setting (default: Standard). TTL comes from DDNS_TTL app setting (default: 3600). Both have safe fallback logic.
 - Keep IPv4 and IPv6 flows aligned: request parsing, lookup, compare, update/create, response.
 - Prefer clear, operator-friendly logging with Write-Host for each major branch.
 - When changing request shape or response text, update both functions consistently.
 
 ## Known Pitfalls
 Watch for these existing issues and risks when editing:
-- In both run.ps1 files, Zone fallback from body currently assigns to Name in one branch. Avoid copying this bug into new logic and fix carefully when touching parameter parsing.
-- Input IP format is not validated today; malformed reqIP can pass through to DNS operations.
-- Functions assume DNS records are in Resource Group Standard.
+- Input validation rejects wrong IP address family (IPv4 for A records, IPv6 for AAAA) and missing inputs, but does not perform deeper IP sanity checks beyond TryParse.
+- DNS lookup uses -ErrorAction Stop and catches exceptions explicitly (fail-closed). Do not remove this or change it to SilentlyContinue.
+- Allowlist checks use -notcontains on a @()-forced array. Single-item allowlist values must remain wrapped in @() to prevent scalar collapse.
+- The no-op branch (IP unchanged) returns 200 without calling Set-AzDnsRecordSet. Keep this branch explicit and separate from the update branch.
 
 ## Azure Deployment Notes
 When preparing deployment-related changes, preserve these assumptions unless intentionally migrating:
