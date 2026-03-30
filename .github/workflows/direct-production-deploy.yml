@@ -209,6 +209,16 @@ jobs:
           check_required "SMOKE_IPV4_ADDRESS" "$SMOKE_IPV4_ADDRESS"
           check_required "SMOKE_IPV6_ADDRESS" "$SMOKE_IPV6_ADDRESS"
 
+          if [ -n "$PROD_IPV4_FUNCTION_URL" ] && [[ "$PROD_IPV4_FUNCTION_URL" != *"code="* ]]; then
+            echo "::error title=Invalid smoke input::PROD_IPV4_FUNCTION_URL must include a function key query parameter (code=...)."
+            missing=1
+          fi
+
+          if [ -n "$PROD_IPV6_FUNCTION_URL" ] && [[ "$PROD_IPV6_FUNCTION_URL" != *"code="* ]]; then
+            echo "::error title=Invalid smoke input::PROD_IPV6_FUNCTION_URL must include a function key query parameter (code=...)."
+            missing=1
+          fi
+
           if [ "$missing" -ne 0 ]; then
             echo "Smoke test input validation failed."
             exit 1
