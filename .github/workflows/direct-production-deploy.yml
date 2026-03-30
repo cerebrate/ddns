@@ -180,6 +180,14 @@ jobs:
             fi
           done
 
+      - name: Wait for managed dependencies to initialise
+        shell: bash
+        run: |
+          echo "Waiting 90 seconds for the function app to cold-start and download managed dependencies (Az.Accounts, Az.Dns)."
+          sleep 90
+          echo "Wait complete."
+
+
   smoke_test_production:
     needs: deploy_to_production
     runs-on: ubuntu-latest
