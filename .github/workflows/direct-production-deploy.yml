@@ -173,10 +173,48 @@ jobs:
   smoke_test_production:
     needs: deploy_to_production
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate smoke test inputs
+        shell: bash
+        env:
+          PROD_IPV4_FUNCTION_URL: ${{ secrets.PROD_IPV4_FUNCTION_URL }}
+          PROD_IPV6_FUNCTION_URL: ${{ secrets.PROD_IPV6_FUNCTION_URL }}
+          SMOKE_ZONE: ${{ vars.SMOKE_ZONE }}
+          SMOKE_IPV4_RECORD: ${{ vars.SMOKE_IPV4_RECORD }}
+          SMOKE_IPV6_RECORD: ${{ vars.SMOKE_IPV6_RECORD }}
+          SMOKE_IPV4_ADDRESS: ${{ vars.SMOKE_IPV4_ADDRESS }}
+          SMOKE_IPV6_ADDRESS: ${{ vars.SMOKE_IPV6_ADDRESS }}
+        run: |
+          missing=0
+
+          check_required() {
+            local key="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "::error title=Missing smoke input::${key} is missing or empty."
+              missing=1
+            fi
+          }
+
+          check_required "PROD_IPV4_FUNCTION_URL" "$PROD_IPV4_FUNCTION_URL"
+          check_required "PROD_IPV6_FUNCTION_URL" "$PROD_IPV6_FUNCTION_URL"
+          check_required "SMOKE_ZONE" "$SMOKE_ZONE"
+          check_required "SMOKE_IPV4_RECORD" "$SMOKE_IPV4_RECORD"
+          check_required "SMOKE_IPV6_RECORD" "$SMOKE_IPV6_RECORD"
+          check_required "SMOKE_IPV4_ADDRESS" "$SMOKE_IPV4_ADDRESS"
+          check_required "SMOKE_IPV6_ADDRESS" "$SMOKE_IPV6_ADDRESS"
+
+          if [ "$missing" -ne 0 ]; then
+            echo "Smoke test input validation failed."
+            exit 1
+          fi
+
+          echo "Smoke test inputs validated."
 
       - name: Smoke test IPv4 endpoint (production)
         shell: pwsh
