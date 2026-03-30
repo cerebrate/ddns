@@ -130,7 +130,7 @@ else {
             Write-Host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
             $lookupFailed = $true
             $status = [HttpStatusCode]::InternalServerError
-            $body = "DNS lookup failed. No changes were applied."
+            $body = "DNS lookup failed [$($_.Exception.GetType().Name)]: $($_.Exception.Message)"
             Write-Host $body
         }
 
