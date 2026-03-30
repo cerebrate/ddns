@@ -13,6 +13,12 @@ The functions support these optional app settings:
 - `DDNS_TTL`: TTL (seconds) used when creating new DNS records.
 	- Default: `3600`
 	- Validation: must be a positive integer; invalid values fall back to `3600`.
+- `DDNS_ALLOWED_ZONES`: Comma-separated exact-match allowlist of permitted DNS zones.
+	- Optional: if unset or empty, zones are unrestricted.
+	- Matching: case-insensitive after trimming.
+- `DDNS_ALLOWED_RECORD_NAMES`: Comma-separated exact-match allowlist of permitted record names.
+	- Optional: if unset or empty, record names are unrestricted.
+	- Matching: case-insensitive after trimming.
 
 If these settings are not provided, the functions keep the original behavior and defaults.
 

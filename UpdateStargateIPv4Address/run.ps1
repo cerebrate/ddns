@@ -38,6 +38,28 @@ if ($ttlSetting) {
     }
 }
 
+$allowedZones = @()
+$allowedZonesSetting = $env:DDNS_ALLOWED_ZONES
+
+if ($allowedZonesSetting) {
+    $allowedZones = @(
+        $allowedZonesSetting.ToString().Split(',') |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Where-Object { $_ }
+    )
+}
+
+$allowedRecordNames = @()
+$allowedRecordNamesSetting = $env:DDNS_ALLOWED_RECORD_NAMES
+
+if ($allowedRecordNamesSetting) {
+    $allowedRecordNames = @(
+        $allowedRecordNamesSetting.ToString().Split(',') |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Where-Object { $_ }
+    )
+}
+
 # Parse from query string first, then fall back to request body.
 $name = $Request.Query.Name
 $zone = $Request.Query.Zone
@@ -71,6 +93,16 @@ if ($null -ne $reqIP) {
 if (-not ($name -and $zone -and $reqIP)) {
     $status = [HttpStatusCode]::BadRequest
     $body = "Please pass a name, zone, and reqIP on the query string or in the request body."
+    Write-Host $body
+}
+elseif ($allowedZones.Count -gt 0 -and ($allowedZones -notcontains $zone.ToLowerInvariant())) {
+    $status = [HttpStatusCode]::Forbidden
+    $body = "Zone is not allowed. No changes were applied."
+    Write-Host $body
+}
+elseif ($allowedRecordNames.Count -gt 0 -and ($allowedRecordNames -notcontains $name.ToLowerInvariant())) {
+    $status = [HttpStatusCode]::Forbidden
+    $body = "Record name is not allowed. No changes were applied."
     Write-Host $body
 }
 else {

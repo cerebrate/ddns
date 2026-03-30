@@ -28,6 +28,8 @@ foreach ($case in $cases) {
         $caseScriptPath = Join-Path $repoRoot $case.ScriptPath
         $originalDdnsResourceGroup = $null
         $originalDdnsTtl = $null
+        $originalAllowedZones = $null
+        $originalAllowedRecordNames = $null
 
         BeforeEach {
             Clear-TestFunctions
@@ -35,8 +37,12 @@ foreach ($case in $cases) {
             $global:NewCalled = $false
             $originalDdnsResourceGroup = $env:DDNS_RESOURCE_GROUP
             $originalDdnsTtl = $env:DDNS_TTL
+            $originalAllowedZones = $env:DDNS_ALLOWED_ZONES
+            $originalAllowedRecordNames = $env:DDNS_ALLOWED_RECORD_NAMES
             Remove-Item Env:DDNS_RESOURCE_GROUP -ErrorAction SilentlyContinue
             Remove-Item Env:DDNS_TTL -ErrorAction SilentlyContinue
+            Remove-Item Env:DDNS_ALLOWED_ZONES -ErrorAction SilentlyContinue
+            Remove-Item Env:DDNS_ALLOWED_RECORD_NAMES -ErrorAction SilentlyContinue
         }
 
         AfterEach {
@@ -54,6 +60,20 @@ foreach ($case in $cases) {
             }
             else {
                 Remove-Item Env:DDNS_TTL -ErrorAction SilentlyContinue
+            }
+
+            if ($null -ne $originalAllowedZones) {
+                $env:DDNS_ALLOWED_ZONES = $originalAllowedZones
+            }
+            else {
+                Remove-Item Env:DDNS_ALLOWED_ZONES -ErrorAction SilentlyContinue
+            }
+
+            if ($null -ne $originalAllowedRecordNames) {
+                $env:DDNS_ALLOWED_RECORD_NAMES = $originalAllowedRecordNames
+            }
+            else {
+                Remove-Item Env:DDNS_ALLOWED_RECORD_NAMES -ErrorAction SilentlyContinue
             }
         }
 
@@ -99,6 +119,61 @@ foreach ($case in $cases) {
 
             $response.StatusCode | Should Be ([System.Net.HttpStatusCode]::BadRequest)
             $response.Body | Should Be $case.InvalidMessage
+            $global:SetCalled | Should Be $false
+            $global:NewCalled | Should Be $false
+        }
+
+        It 'allows requests when zone and record name are in the allowlists' {
+            Set-TestAzMocks -LookupMode existing -CurrentIp $case.ValidIp -IpKind $case.IpKind
+            $env:DDNS_ALLOWED_ZONES = 'example.com, other.example'
+            $env:DDNS_ALLOWED_RECORD_NAMES = 'router, backup'
+
+            $request = New-TestRequest -Query @{
+                Name = 'Router'
+                Zone = 'Example.com'
+                reqIP = $case.ValidIp
+            } -Body @{}
+
+            $response = Invoke-FunctionScript -ScriptPath $caseScriptPath -Request $request
+
+            $response.StatusCode | Should Be ([System.Net.HttpStatusCode]::OK)
+            $response.Body | Should Be 'Requested IP and current DNS record match - no changes needed'
+            $global:SetCalled | Should Be $false
+            $global:NewCalled | Should Be $false
+        }
+
+        It 'returns 403 for disallowed zone' {
+            Set-TestAzMocks -LookupMode missing -IpKind $case.IpKind
+            $env:DDNS_ALLOWED_ZONES = 'allowed.example'
+
+            $request = New-TestRequest -Query @{
+                Name = 'router'
+                Zone = 'example.com'
+                reqIP = $case.ValidIp
+            } -Body @{}
+
+            $response = Invoke-FunctionScript -ScriptPath $caseScriptPath -Request $request
+
+            $response.StatusCode | Should Be ([System.Net.HttpStatusCode]::Forbidden)
+            $response.Body | Should Be 'Zone is not allowed. No changes were applied.'
+            $global:SetCalled | Should Be $false
+            $global:NewCalled | Should Be $false
+        }
+
+        It 'returns 403 for disallowed record name' {
+            Set-TestAzMocks -LookupMode missing -IpKind $case.IpKind
+            $env:DDNS_ALLOWED_RECORD_NAMES = 'allowed-router'
+
+            $request = New-TestRequest -Query @{
+                Name = 'router'
+                Zone = 'example.com'
+                reqIP = $case.ValidIp
+            } -Body @{}
+
+            $response = Invoke-FunctionScript -ScriptPath $caseScriptPath -Request $request
+
+            $response.StatusCode | Should Be ([System.Net.HttpStatusCode]::Forbidden)
+            $response.Body | Should Be 'Record name is not allowed. No changes were applied.'
             $global:SetCalled | Should Be $false
             $global:NewCalled | Should Be $false
         }
