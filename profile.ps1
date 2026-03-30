@@ -7,11 +7,27 @@
 # * A Function App starts up after being de-allocated due to inactivity
 #
 
-try {
-    Connect-AzAccount -Identity -ErrorAction Stop
-    Write-Host "Azure account connected via managed identity."
+$maxAttempts = 12
+$retryDelaySeconds = 15
+$lastErrorMessage = $null
+
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+        Import-Module Az.Accounts -ErrorAction Stop
+        Disable-AzContextAutosave -Scope Process | Out-Null
+        Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+        Write-Host "Azure account connected via managed identity."
+        return
+    }
+    catch {
+        $lastErrorMessage = $_.Exception.Message
+        Write-Host "Managed identity initialization attempt $attempt/$maxAttempts failed: $lastErrorMessage"
+
+        if ($attempt -lt $maxAttempts) {
+            Start-Sleep -Seconds $retryDelaySeconds
+        }
+    }
 }
-catch {
-    Write-Error "Failed to connect to Azure with managed identity: $($_.Exception.Message)"
-    throw
-}
+
+Write-Error "Failed to connect to Azure with managed identity after $maxAttempts attempts: $lastErrorMessage"
+throw
