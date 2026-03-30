@@ -125,13 +125,50 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy package to production
+      - name: Deploy package to production (with retry)
         shell: bash
         run: |
-          az functionapp deployment source config-zip \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
-            --src "${{ env.PACKAGE_PATH }}"
+          set -o pipefail
+
+          max_attempts=5
+          attempt=1
+          sleep_seconds=20
+
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Zip deploy attempt $attempt/$max_attempts"
+
+            if az functionapp deployment source config-zip \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+              --src "${{ env.PACKAGE_PATH }}"; then
+              echo "Zip deployment succeeded on attempt $attempt."
+              exit 0
+            fi
+
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "Zip deployment failed on attempt $attempt. Retrying in ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+              sleep_seconds=$((sleep_seconds * 2))
+            else
+              echo "::error title=Zip deployment failed::All $max_attempts deployment attempts failed."
+              echo "Collecting lightweight diagnostics (safe fields only)."
+
+              az functionapp show \
+                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+                --query "{state:state, kind:kind, defaultHostName:defaultHostName, enabledHostNames:enabledHostNames}" \
+                -o json || true
+
+              az functionapp config appsettings list \
+                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+                --query "[?name=='WEBSITE_CONTENTSHARE' || name=='WEBSITE_CONTENTAZUREFILECONNECTIONSTRING' || name=='WEBSITE_RUN_FROM_PACKAGE'].name" \
+                -o tsv || true
+
+              exit 1
+            fi
+          done
 
   smoke_test_production:
     needs: deploy_to_production
