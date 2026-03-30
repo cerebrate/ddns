@@ -1,0 +1,54 @@
+name: Re-enable DDNS Functions
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for re-enabling functions
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ddns-reenable-functions
+  cancel-in-progress: false
+
+jobs:
+  re_enable:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Re-enable both update functions
+        shell: bash
+        run: |
+          az functionapp config appsettings set \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --settings \
+              AzureWebJobs.UpdateStargateIPv4Address.Disabled=false \
+              AzureWebJobs.UpdateStargateIPv6Address.Disabled=false
+
+      - name: Show current disabled flags
+        shell: bash
+        run: |
+          az functionapp config appsettings list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --query "[?name=='AzureWebJobs.UpdateStargateIPv4Address.Disabled' || name=='AzureWebJobs.UpdateStargateIPv6Address.Disabled'].{name:name,value:value}" \
+            -o table
+
+      - name: Emit operator note
+        shell: bash
+        run: |
+          echo "Functions re-enabled. Reason: ${{ github.event.inputs.reason }}"

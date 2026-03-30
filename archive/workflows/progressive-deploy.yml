@@ -1,0 +1,190 @@
+name: Progressive Deploy Azure Functions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ddns-progressive-production
+  cancel-in-progress: false
+
+env:
+  PACKAGE_PATH: artifacts/functionapp.zip
+
+jobs:
+  validate_and_package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $files = @(
+            'UpdateStargateIPv4Address/run.ps1',
+            'UpdateStargateIPv6Address/run.ps1',
+            'profile.ps1'
+          )
+
+          foreach ($file in $files) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$parseErrors) | Out-Null
+
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error "${file}: $($_.Message)" }
+              throw "PowerShell syntax validation failed."
+            }
+          }
+
+      - name: Create deployment package
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          zip -r "$PACKAGE_PATH" . \
+            -x ".git/*" \
+               ".github/*" \
+               ".vscode/*" \
+               "local.settings.json" \
+               "__blobstorage__/*" \
+               "__queuestorage__/*" \
+               "__azurite_db*__.json" \
+               ".azurite/*"
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: functionapp-package
+          path: ${{ env.PACKAGE_PATH }}
+          if-no-files-found: error
+
+  deploy_to_staging:
+    needs: validate_and_package
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp-package
+          path: artifacts
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy package to staging slot
+        shell: bash
+        run: |
+          az functionapp deployment source config-zip \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --slot "${{ vars.AZURE_STAGING_SLOT }}" \
+            --src "${{ env.PACKAGE_PATH }}"
+
+  smoke_test_staging:
+    needs: deploy_to_staging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Smoke test IPv4 endpoint (staging)
+        shell: pwsh
+        run: |
+          ./.github/scripts/smoke-test.ps1 \
+            -FunctionUrl "${{ secrets.STAGING_IPV4_FUNCTION_URL }}" \
+            -Zone "${{ vars.SMOKE_ZONE }}" \
+            -Name "${{ vars.SMOKE_IPV4_RECORD }}" \
+            -ReqIp "${{ vars.SMOKE_IPV4_ADDRESS }}"
+
+      - name: Smoke test IPv6 endpoint (staging)
+        shell: pwsh
+        run: |
+          ./.github/scripts/smoke-test.ps1 \
+            -FunctionUrl "${{ secrets.STAGING_IPV6_FUNCTION_URL }}" \
+            -Zone "${{ vars.SMOKE_ZONE }}" \
+            -Name "${{ vars.SMOKE_IPV6_RECORD }}" \
+            -ReqIp "${{ vars.SMOKE_IPV6_ADDRESS }}"
+
+  swap_to_production:
+    needs: smoke_test_staging
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Swap staging slot into production
+        shell: bash
+        run: |
+          az functionapp deployment slot swap \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --slot "${{ vars.AZURE_STAGING_SLOT }}" \
+            --target-slot production
+
+  smoke_test_production:
+    needs: swap_to_production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Smoke test IPv4 endpoint (production)
+        shell: pwsh
+        run: |
+          ./.github/scripts/smoke-test.ps1 \
+            -FunctionUrl "${{ secrets.PROD_IPV4_FUNCTION_URL }}" \
+            -Zone "${{ vars.SMOKE_ZONE }}" \
+            -Name "${{ vars.SMOKE_IPV4_RECORD }}" \
+            -ReqIp "${{ vars.SMOKE_IPV4_ADDRESS }}"
+
+      - name: Smoke test IPv6 endpoint (production)
+        shell: pwsh
+        run: |
+          ./.github/scripts/smoke-test.ps1 \
+            -FunctionUrl "${{ secrets.PROD_IPV6_FUNCTION_URL }}" \
+            -Zone "${{ vars.SMOKE_ZONE }}" \
+            -Name "${{ vars.SMOKE_IPV6_RECORD }}" \
+            -ReqIp "${{ vars.SMOKE_IPV6_ADDRESS }}"
+
+  rollback_swap_on_failure:
+    if: ${{ needs.swap_to_production.result == 'success' && needs.smoke_test_production.result == 'failure' }}
+    needs:
+      - swap_to_production
+      - smoke_test_production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Swap production back to staging
+        shell: bash
+        run: |
+          az functionapp deployment slot swap \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNCTIONAPP_NAME }}" \
+            --slot "${{ vars.AZURE_STAGING_SLOT }}" \
+            --target-slot production

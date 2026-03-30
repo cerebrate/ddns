@@ -15,3 +15,121 @@ The functions support these optional app settings:
 	- Validation: must be a positive integer; invalid values fall back to `3600`.
 
 If these settings are not provided, the functions keep the original behavior and defaults.
+
+## Direct-to-production workflow (no slots)
+
+If you cannot use deployment slots or a separate staging Function App, use:
+
+- [.github/workflows/direct-production-deploy.yml](.github/workflows/direct-production-deploy.yml)
+- [.github/workflows/re-enable-functions.yml](.github/workflows/re-enable-functions.yml) for one-click recovery after backoff
+
+Flow:
+
+1. Validate PowerShell syntax.
+2. Package function app content.
+3. Deploy directly to production.
+4. Run production smoke tests for IPv4 and IPv6.
+5. If smoke tests fail, automatically back off by disabling both functions:
+	- `AzureWebJobs.UpdateStargateIPv4Address.Disabled=true`
+	- `AzureWebJobs.UpdateStargateIPv6Address.Disabled=true`
+
+This does not roll back code. It prevents further update traffic until you investigate and re-enable.
+
+### Required GitHub variables for direct workflow
+
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_FUNCTIONAPP_NAME`
+- `SMOKE_ZONE`
+- `SMOKE_IPV4_RECORD`
+- `SMOKE_IPV6_RECORD`
+- `SMOKE_IPV4_ADDRESS`
+- `SMOKE_IPV6_ADDRESS`
+
+### Required GitHub secrets for direct workflow
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `PROD_IPV4_FUNCTION_URL`
+- `PROD_IPV6_FUNCTION_URL`
+
+### Azure-side requirements for direct workflow
+
+1. Ensure managed identity and DNS role assignment are already configured for the Function App.
+2. Ensure the GitHub OIDC principal has permissions to:
+	- Deploy zip package to the Function App
+	- Update app settings (needed for automatic backoff)
+3. Configure GitHub `production` environment with required reviewers/approval.
+
+### Re-enable functions after backoff
+
+After fixing the issue, either:
+
+1. Run [.github/workflows/re-enable-functions.yml](.github/workflows/re-enable-functions.yml), or
+2. Re-enable both functions manually:
+
+```bash
+az functionapp config appsettings set \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --settings \
+	 AzureWebJobs.UpdateStargateIPv4Address.Disabled=false \
+	 AzureWebJobs.UpdateStargateIPv6Address.Disabled=false
+```
+
+## Operator runbook (direct production mode)
+
+### 1. Deploy
+
+1. Confirm production environment approvals are in place on GitHub.
+2. Run workflow: [.github/workflows/direct-production-deploy.yml](.github/workflows/direct-production-deploy.yml).
+3. Wait for jobs to complete in order:
+	- `validate_and_package`
+	- `deploy_to_production`
+	- `smoke_test_production`
+
+### 2. Interpret smoke test outcomes
+
+1. If `smoke_test_production` is green:
+	- Deployment is considered successful.
+	- No further action required.
+2. If `smoke_test_production` fails and `backoff_on_smoke_failure` succeeds:
+	- Both functions were automatically disabled.
+	- Incoming DDNS updates are paused by design.
+3. If both smoke and backoff jobs fail:
+	- Assume deployment is unhealthy and functions may still be active.
+	- Manually disable functions immediately (command below), then investigate.
+
+Manual disable command:
+
+```bash
+az functionapp config appsettings set \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --settings \
+	 AzureWebJobs.UpdateStargateIPv4Address.Disabled=true \
+	 AzureWebJobs.UpdateStargateIPv6Address.Disabled=true
+```
+
+### 3. Recover and re-enable
+
+1. Investigate deployment and runtime logs in Azure.
+2. Fix the issue in code/config and redeploy.
+3. Re-enable functions using either:
+	- Workflow: [.github/workflows/re-enable-functions.yml](.github/workflows/re-enable-functions.yml)
+	- Manual CLI command in the Re-enable functions after backoff section.
+4. Run a manual smoke verification by calling both production function URLs with known canary values.
+
+### 4. Recommended checks after recovery
+
+1. Confirm both Disabled flags are `false`.
+2. Confirm both smoke calls return HTTP 200 and expected body text.
+3. Confirm DNS records for canary names reflect expected values.
+4. Record incident notes with root cause and mitigation applied.
+
+## Archived workflows and docs
+
+To avoid confusion under current constraints, the slot-based progressive deployment assets are archived:
+
+- [archive/workflows/progressive-deploy.yml](archive/workflows/progressive-deploy.yml)
+- [archive/docs/progressive-deployment.md](archive/docs/progressive-deployment.md)
