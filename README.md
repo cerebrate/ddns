@@ -32,14 +32,24 @@ If you cannot use deployment slots or a separate staging Function App, use:
 Flow:
 
 1. Validate PowerShell syntax.
-2. Package function app content.
-3. Deploy directly to production.
-4. Run production smoke tests for IPv4 and IPv6.
-5. If smoke tests fail, automatically back off by disabling both functions:
+2. Run Pester tests.
+3. Generate deployment metadata artifact.
+4. Package function app content.
+5. Deploy directly to production.
+6. Run production smoke tests for IPv4 and IPv6.
+7. If smoke tests fail, automatically back off by disabling both functions:
 	- `AzureWebJobs.UpdateStargateIPv4Address.Disabled=true`
 	- `AzureWebJobs.UpdateStargateIPv6Address.Disabled=true`
+8. Emit a GitHub workflow error and step summary.
+9. Upload an incident report artifact for operators.
 
 This does not roll back code. It prevents further update traffic until you investigate and re-enable.
+
+The workflow retains these artifacts for 30 days:
+
+1. Deployment package
+2. Deployment metadata (`deployment-metadata.json`)
+3. Backoff incident report (only when smoke fails)
 
 ### Required GitHub variables for direct workflow
 
@@ -102,6 +112,8 @@ az functionapp config appsettings set \
 2. If `smoke_test_production` fails and `backoff_on_smoke_failure` succeeds:
 	- Both functions were automatically disabled.
 	- Incoming DDNS updates are paused by design.
+	- The workflow emits an error annotation and a step summary entry.
+	- Download the retained `production-backoff-incident-report` artifact for the run record.
 3. If both smoke and backoff jobs fail:
 	- Assume deployment is unhealthy and functions may still be active.
 	- Manually disable functions immediately (command below), then investigate.

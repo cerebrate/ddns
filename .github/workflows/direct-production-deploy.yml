@@ -54,6 +54,22 @@ jobs:
           Import-Module $pesterModule -Force
           Invoke-Pester -Path ./tests
 
+      - name: Create deployment metadata
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cat > artifacts/deployment-metadata.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}",
+            "actor": "${{ github.actor }}",
+            "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
       - name: Create deployment package
         shell: bash
         run: |
@@ -74,6 +90,15 @@ jobs:
           name: functionapp-package
           path: ${{ env.PACKAGE_PATH }}
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload deployment metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-metadata
+          path: artifacts/deployment-metadata.json
+          if-no-files-found: error
+          retention-days: 30
 
   deploy_to_production:
     needs: validate_and_package
@@ -85,6 +110,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: functionapp-package
+          path: artifacts
+
+      - name: Download deployment metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-metadata
           path: artifacts
 
       - name: Azure login (OIDC)
@@ -153,9 +184,48 @@ jobs:
               AzureWebJobs.UpdateStargateIPv4Address.Disabled=true \
               AzureWebJobs.UpdateStargateIPv6Address.Disabled=true
 
-      - name: Emit operator warning
+      - name: Write incident summary
         shell: bash
         run: |
-          echo "Smoke tests failed after direct production deploy."
-          echo "Both functions were disabled as a backoff safety action."
-          echo "Investigate logs, fix issue, then re-enable by setting both Disabled flags to false."
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Production Backoff Triggered
+
+          Smoke tests failed after direct production deployment.
+
+          Actions taken:
+
+          1. Disabled UpdateStargateIPv4Address
+          2. Disabled UpdateStargateIPv6Address
+
+          Immediate next steps:
+
+          1. Review workflow logs and Azure Function logs
+          2. Fix the issue and redeploy
+          3. Re-enable functions using the re-enable workflow
+          EOF
+
+          echo "::error title=Production smoke test failed::Both DDNS functions were disabled as an automatic backoff action."
+
+      - name: Create incident report artifact
+        shell: bash
+        run: |
+          cat > incident-report.txt <<EOF
+          Production smoke tests failed after direct deployment.
+          Repository: ${{ github.repository }}
+          Ref: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          Run ID: ${{ github.run_id }}
+          Run Attempt: ${{ github.run_attempt }}
+          Function App: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          Resource Group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          Backoff Action: Disabled UpdateStargateIPv4Address and UpdateStargateIPv6Address
+          Timestamp UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+      - name: Upload incident report
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-backoff-incident-report
+          path: incident-report.txt
+          if-no-files-found: error
+          retention-days: 30
